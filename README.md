@@ -1,134 +1,128 @@
-# Sveltia CMS Authenticator
+# Autenticador do Sveltia CMS
 
-This simple [Cloudflare Workers](https://workers.cloudflare.com/) script allows [Sveltia CMS](https://sveltiacms.app/en/) users to authenticate with [GitHub](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps).
+Este projeto é um pequeno serviço de autenticação executado no [Cloudflare Workers](https://workers.cloudflare.com/). Ele permite que usuários do [Sveltia CMS](https://sveltiacms.app/en/) entrem usando o GitHub ou o GitLab.
 
-<!-- prettier-ignore-start -->
+No site do GPENSC, esse serviço é utilizado como intermediário de autenticação entre o painel administrativo do Sveltia CMS e o GitHub. Ele processa o fluxo OAuth e devolve a autorização ao painel; não é o próprio painel administrativo nem o site público.
+
 > [!IMPORTANT]
-> **In most cases, you don’t need this authenticator**. Sveltia CMS supports multiple authentication methods for GitHub and GitLab, so you can choose the one that best suits your needs without having to set up this OAuth client.
-<!-- prettier-ignore-end -->
+> **Na maioria dos casos, você não precisa deste autenticador.** O Sveltia CMS oferece diferentes métodos de autenticação para GitHub e GitLab. Escolha o mais adequado ao projeto antes de configurar este cliente OAuth.
 
-<!-- prettier-ignore-start -->
 > [!IMPORTANT]
-> Although this authenticator is compatible with Netlify CMS (now Decap CMS), it is designed for use with modern Sveltia CMS instances. Please refer to the [Sveltia CMS documentation](https://sveltiacms.app/en/docs/successor-to-netlify-cms) for more information about the differences between these products and the reasons why Decap CMS should not be used for new projects.
-<!-- prettier-ignore-end -->
+> Embora seja compatível com o Netlify CMS (hoje Decap CMS), este autenticador foi desenvolvido para instalações modernas do Sveltia CMS. Consulte a [documentação do Sveltia CMS](https://sveltiacms.app/en/docs/successor-to-netlify-cms) para conhecer as diferenças entre os produtos e entender por que o Decap CMS não é recomendado para projetos novos.
 
-## When to use it
+## Quando usar
 
-### You don’t need it if…
+### Você não precisa dele se…
 
-- You’re migrating from Netlify CMS or Decap CMS
-  - Your site is being deployed to Netlify
-    - You can keep using Netlify’s built-in OAuth client for Sveltia CMS without any changes to your CMS configuration.
-  - You already use [another 3rd party OAuth client](https://decapcms.org/docs/external-oauth-clients/)
-    - You can keep using it for Sveltia CMS without any changes to your CMS configuration.
-- You’re using GitHub
-  - You or technical users are the only users of your CMS instance
-    - Use the [access token method](https://sveltiacms.app/en/docs/backends/github#access-token) instead.
-- You’re using GitLab
-  - You or technical users are the only users of your CMS instance
-    - Use the [access token method](https://sveltiacms.app/en/docs/backends/gitlab#access-token) instead.
-  - Non-technical users need to sign into the CMS
-    - Use [client-side PKCE authorization](https://sveltiacms.app/en/docs/backends/gitlab#pkce-authorization) instead.
+- **Está migrando do Netlify CMS ou do Decap CMS**
+  - Se o site está hospedado no Netlify, você pode continuar usando o cliente OAuth integrado do Netlify com o Sveltia CMS, sem alterar a configuração do CMS.
+  - Se já utiliza outro [cliente OAuth de terceiros](https://decapcms.org/docs/external-oauth-clients/), pode continuar usando-o com o Sveltia CMS sem modificar a configuração.
+- **Está usando o GitHub**
+  - Se somente você ou pessoas com conhecimentos técnicos utilizarão o CMS, prefira o [método de token de acesso](https://sveltiacms.app/en/docs/backends/github#access-token).
+- **Está usando o GitLab**
+  - Se somente você ou pessoas com conhecimentos técnicos utilizarão o CMS, prefira o [método de token de acesso](https://sveltiacms.app/en/docs/backends/gitlab#access-token).
+  - Se pessoas sem conhecimentos técnicos precisarem entrar no CMS, use a [autorização PKCE no lado do cliente](https://sveltiacms.app/en/docs/backends/gitlab#pkce-authorization).
 
-### You may need it only if…
+### Você pode precisar dele se…
 
-- You’re using GitHub
-  - Non-technical users need to sign into the CMS
-    - This authenticator will provide a better user experience than the access token method, which requires users to create and manage their own personal access tokens.
+- **Está usando o GitHub e pessoas sem conhecimentos técnicos precisam entrar no CMS**
+  - Este autenticador oferece uma experiência mais simples do que o método de token de acesso, que exige que cada usuário crie e gerencie seu próprio token de acesso pessoal.
 
-<!-- prettier-ignore-start -->
 > [!NOTE]
-> GitLab users don’t need this authenticator at all. GitLab support is included here only for completeness.
-<!-- prettier-ignore-end -->
+> Usuários do GitLab não precisam deste autenticador. O suporte ao GitLab é incluído aqui apenas para fins de completude.
 
-## How to use it
+## Como usar
 
-### Step 1. Deploy this project to Cloudflare Workers
+### Etapa 1. Implante este projeto no Cloudflare Workers
 
-Sign up with Cloudflare, and click the button below to start deploying.
+Crie uma conta no Cloudflare e use o botão abaixo para começar a implantação.
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/sveltia/sveltia-cms-auth)
+[![Implantar no Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/maiconcarlospng/sveltia-cms-auth)
 
-Alternatively, you can clone the project and run [`wrangler deploy`](https://developers.cloudflare.com/workers/wrangler/commands/#deploy) locally.
+Como alternativa, clone o repositório e execute [o comando wrangler deploy](https://developers.cloudflare.com/workers/wrangler/commands/#deploy) localmente.
 
-Once deployed, open your Cloudflare Workers dashboard, select the `sveltia-cms-auth` service, then the worker URL (`https://sveltia-cms-auth.<SUBDOMAIN>.workers.dev`) will be displayed. Copy it for Step 2. It will also be used in Step 4.
+Depois da implantação, abra o painel do Cloudflare, selecione o serviço `sveltia-cms-auth` e localize a URL do Worker, que terá um formato semelhante a `https://sveltia-cms-auth.<SUBDOMINIO>.workers.dev`. Copie essa URL para utilizá-la nas etapas 2 e 4.
 
-### Step 2. Register the Worker as an OAuth app
-
-#### GitHub
-
-[Register a new OAuth application](https://github.com/settings/applications/new) on GitHub ([details](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app)) with the following properties, including your Worker URL from Step 1:
-
-- Application name: `Sveltia CMS Authenticator` (or whatever)
-- Homepage URL: `https://github.com/sveltia/sveltia-cms-auth` (or whatever)
-- Application description: (can be left empty)
-- Authorization callback URL: `<YOUR_WORKER_URL>/callback`
-
-Once registered, click on the **Generate a new client secret** button. The app’s **Client ID** and **Client Secret** will be displayed. We’ll use them in Step 3 below.
-
-#### GitLab
-
-[Register a new OAuth application](https://gitlab.com/-/user_settings/applications) on GitLab ([details](https://docs.gitlab.com/ee/integration/oauth_provider.html#create-a-user-owned-application)) with the following properties, including your Worker URL from Step 1:
-
-- Name: `Sveltia CMS Authenticator` (or whatever)
-- Redirect URI: `<YOUR_WORKER_URL>/callback`
-- Confidential: Yes
-- Scopes: `api` only
-
-Once registered, the app’s **Application ID** and **Secret** will be displayed. We’ll use them in Step 3 below.
-
-### Step 3. Configure the Worker
-
-Go back to the `sveltia-cms-auth` service page on the Cloudflare dashboard, select **Settings** > **Variables**, and add the following Environment Variables to your worker ([details](https://developers.cloudflare.com/workers/platform/environment-variables/#environment-variables-via-the-dashboard)):
+### Etapa 2. Registre o Worker como um aplicativo OAuth
 
 #### GitHub
 
-- `GITHUB_CLIENT_ID`: **Client ID** from Step 2
-- `GITHUB_CLIENT_SECRET`: **Client Secret** from Step 2; click the **Encrypt** button to hide it
-- `GITHUB_HOSTNAME`: Required only if you’re using GitHub Enterprise Server. Default: `github.com`
-- `GITHUB_ALLOW_WORKFLOW_SCOPE`: (Optional) Set to `true` to let a site request the `workflow` scope with Sveltia CMS’s `auth_scope` option, so the CMS can keep an [Open Authoring](https://sveltiacms.app/en/docs/workflows/open#authentication-scope) contributor’s fork in sync when the site’s GitHub Actions workflow files change. The scope lets a token change workflows in every repository the user can push to, so it’s left out of the request unless this is set
+[Registre um novo aplicativo OAuth no GitHub](https://github.com/settings/applications/new) seguindo as [instruções oficiais](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app). Use a URL do Worker obtida na etapa 1.
+
+Preencha os campos assim:
+
+- **Nome do aplicativo:** `Sveltia CMS Authenticator` (ou outro nome de sua preferência)
+- **URL da página inicial:** `https://github.com/maiconcarlospng/sveltia-cms-auth` (ou outra URL adequada)
+- **Descrição do aplicativo:** opcional
+- **URL de retorno da autorização (Authorization callback URL):** `<URL_DO_SEU_WORKER>/callback`
+
+Depois de registrar o aplicativo, clique em **Generate a new client secret** (Gerar um novo segredo do cliente). O GitHub exibirá o **Client ID** e o **Client Secret**, que serão usados na etapa 3.
 
 #### GitLab
 
-- `GITLAB_CLIENT_ID`: **Application ID** from Step 2
-- `GITLAB_CLIENT_SECRET`: **Secret** from Step 2; click the **Encrypt** button to hide it
-- `GITLAB_HOSTNAME`: Required only if you’re using a self-hosted instance. Default: `gitlab.com`
+[Registre um novo aplicativo OAuth no GitLab](https://gitlab.com/-/user_settings/applications), seguindo as [instruções oficiais](https://docs.gitlab.com/ee/integration/oauth_provider.html#create-a-user-owned-application). Use a URL do Worker obtida na etapa 1.
 
-#### Both GitHub and GitLab
+Preencha os campos assim:
 
-- `ALLOWED_DOMAINS`: (Optional) Your site’s hostname, e.g. `www.example.com`
-  - Multiple hostnames can be defined as a comma-separated list, e.g. `www.example.com, www.example.org`
-  - A wildcard (`*`) can be used to match any subdomain, e.g. `*.example.com` that will match `www.example.com`, `blog.example.com`, `docs.api.example.com`, etc. (but not `example.com`)
-  - To match a `www`-less naked domain and all the subdomains, use `example.com, *.example.com`
-  - The list serves two purposes: it stops other sites from using your Worker at your expense (anti-abuse), and it stops them from obtaining an access token through it (security), because the authenticator releases a token only to a page served from one of these hostnames
+- **Nome:** `Sveltia CMS Authenticator` (ou outro nome de sua preferência)
+- **URI de redirecionamento:** `<URL_DO_SEU_WORKER>/callback`
+- **Confidencial:** Sim
+- **Escopos (Scopes):** somente `api`
 
-<!-- prettier-ignore-start -->
+Depois de registrar o aplicativo, o GitLab exibirá o **Application ID** e o **Secret**, que serão usados na etapa 3.
+
+### Etapa 3. Configure o Worker
+
+Volte à página do serviço `sveltia-cms-auth` no painel do Cloudflare. Acesse **Settings** (Configurações) > **Variables** (Variáveis) e adicione as variáveis de ambiente a seguir. Consulte também a [documentação do Cloudflare sobre variáveis de ambiente](https://developers.cloudflare.com/workers/platform/environment-variables/#environment-variables-via-the-dashboard).
+
+#### GitHub
+
+- `GITHUB_CLIENT_ID`: o **Client ID** obtido na etapa 2.
+- `GITHUB_CLIENT_SECRET`: o **Client Secret** obtido na etapa 2. Clique em **Encrypt** (Criptografar) para ocultar o valor.
+- `GITHUB_HOSTNAME`: necessário apenas se você utiliza o GitHub Enterprise Server. Valor padrão: `github.com`.
+- `GITHUB_ALLOW_WORKFLOW_SCOPE`: opcional. Defina como `true` para permitir que o site solicite o escopo `workflow` por meio da opção `auth_scope` do Sveltia CMS. Isso permite que o CMS mantenha sincronizado o fork de um colaborador do [Open Authoring](https://sveltiacms.app/en/docs/workflows/open#authentication-scope) quando os arquivos de workflow do GitHub Actions do site forem alterados. Esse escopo permite modificar workflows em todos os repositórios nos quais o usuário pode enviar alterações; por segurança, ele não é solicitado por padrão.
+
+#### GitLab
+
+- `GITLAB_CLIENT_ID`: o **Application ID** obtido na etapa 2.
+- `GITLAB_CLIENT_SECRET`: o **Secret** obtido na etapa 2. Clique em **Encrypt** (Criptografar) para ocultar o valor.
+- `GITLAB_HOSTNAME`: necessário apenas se você utiliza uma instalação própria do GitLab. Valor padrão: `gitlab.com`.
+
+#### GitHub e GitLab
+
+- `ALLOWED_DOMAINS`: opcional, mas fortemente recomendado. Define os domínios dos sites autorizados a usar o Worker, por exemplo, `www.exemplo.com`.
+  - Para informar vários domínios, separe-os por vírgula: `www.exemplo.com, www.exemplo.org`.
+  - Você pode usar um curinga (`*`) para corresponder a subdomínios. Por exemplo, `*.exemplo.com` corresponde a `www.exemplo.com`, `blog.exemplo.com` e `docs.api.exemplo.com`, mas não a `exemplo.com`.
+  - Para permitir o domínio principal e seus subdomínios, use `exemplo.com, *.exemplo.com`.
+  - A lista tem duas funções: impede que outros sites utilizem o seu Worker sem autorização, consumindo seus recursos, e evita que obtenham um token de acesso por meio dele. O autenticador só entrega o token a uma página servida por um dos domínios autorizados.
+
 > [!IMPORTANT]
-> `ALLOWED_DOMAINS` is optional, but it’s both an anti-abuse and a security measure, so setting it is strongly recommended.
-<!-- prettier-ignore-end -->
+> A variável `ALLOWED_DOMAINS` é opcional, mas é uma medida de segurança e de prevenção contra abusos. **Recomendamos fortemente configurá-la** com o domínio do seu site.
 
-Save and deploy.
+Salve as variáveis e implante o Worker.
 
-### Step 4. Update your CMS configuration
+### Etapa 4. Atualize a configuração do CMS
 
-Open `admin/config.yml` locally or remotely, and add your Worker URL from Step 1 as the new `base_url` property under `backend`:
+Abra o arquivo `admin/config.yml`, localmente ou no GitHub, e adicione a propriedade `base_url` dentro de `backend`, utilizando a URL do Worker obtida na etapa 1:
 
-```diff
+~~~diff
  backend:
-   name: github # or gitlab
-   repo: username/repo
+   name: github # ou gitlab
+   repo: usuario/repositorio
    branch: main
-+  base_url: <YOUR_WORKER_URL>
-```
++  base_url: <URL_DO_SEU_WORKER>
+~~~
 
-Commit the change. Once deployed, you can sign into Sveltia CMS remotely with GitHub or GitLab!
+Salve e envie a alteração para o repositório. Depois que a nova configuração for publicada, você poderá entrar remotamente no Sveltia CMS usando sua conta do GitHub ou do GitLab.
 
-## FAQ
+## Perguntas frequentes
 
-### Why do I have to set this thing up in the first place?
+### Por que preciso configurar esse serviço?
 
-Technically, we could host Sveltia CMS Authenticator on our own server and let anyone use it, just like Netlify does. The cost probably wouldn’t matter because it’s just a small, short-lived script. However, running such a **service** certainly comes with legal, privacy and security liabilities that we cannot afford. Remember that Sveltia CMS is nothing more than [@kyoshino](https://github.com/kyoshino)’s personal project. That’s why the authenticator is not offered as SaaS and you have to install it yourself.
+Tecnicamente, seria possível hospedar o Sveltia CMS Authenticator em um servidor próprio do projeto e permitir que qualquer pessoa o utilizasse, como o Netlify faz. O custo provavelmente seria baixo, pois se trata de um script pequeno e de curta duração. Porém, manter um serviço desse tipo envolve responsabilidades legais, de privacidade e de segurança que o projeto original não pode assumir.
 
-## Acknowledgements
+O Sveltia CMS é um projeto pessoal de [@kyoshino](https://github.com/kyoshino). Por isso, o autenticador não é oferecido como um serviço hospedado para todos (SaaS): quem precisa dele deve implantá-lo e mantê-lo por conta própria.
 
-This project was inspired by [`netlify-cms-oauth-firebase`](https://github.com/Herohtar/netlify-cms-oauth-firebase).
+## Agradecimentos
+
+Este projeto foi inspirado no [netlify-cms-oauth-firebase](https://github.com/Herohtar/netlify-cms-oauth-firebase).
